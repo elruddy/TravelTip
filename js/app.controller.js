@@ -81,18 +81,26 @@ function renderLocs(locs) {
 }
 
 function onRemoveLoc(locId) {
-  locService
-    .remove(locId)
+  const confirmToRemove = Swal.fire({
+    title: 'Confirm?',
+    showDenyButton: true,
+  });
+  confirmToRemove.then((res) => {
+    if (!res.isConfirmed) return;
 
-    .then(() => {
-      flashMsg('Location removed');
-      unDisplayLoc();
-      loadAndRenderLocs();
-    })
-    .catch((err) => {
-      console.error('OOPs:', err);
-      flashMsg('Cannot remove location');
-    });
+    locService
+      .remove(locId)
+
+      .then(() => {
+        flashMsg('Location removed');
+        unDisplayLoc();
+        loadAndRenderLocs();
+      })
+      .catch((err) => {
+        console.error('OOPs:', err);
+        flashMsg('Cannot remove location');
+      });
+  });
 }
 
 function onSearchAddress(ev) {
