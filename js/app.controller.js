@@ -18,6 +18,8 @@ window.app = {
   onSetFilterBy,
 };
 
+var gUserPos;
+
 function onInit() {
   getFilterByFromQueryParams();
   loadAndRenderLocs();
@@ -38,11 +40,22 @@ function renderLocs(locs) {
 
   var strHTML = locs
     .map((loc) => {
+      let distanceFromUser;
+
+      if (gUserPos) {
+        distanceFromUser = utilService.getDistance(gUserPos, loc.geo);
+      }
+
       const className = loc.id === selectedLocId ? 'active' : '';
       return `
         <li class="loc ${className}" data-id="${loc.id}">
             <h4>  
                 <span>${loc.name}</span>
+                ${
+                  distanceFromUser !== undefined
+                    ? `<span>Distance: ${distanceFromUser} KM.</span>`
+                    : ''
+                }
                 <span title="${loc.rate} stars">${'★'.repeat(loc.rate)}</span>
             </h4>
             <p class="muted">
@@ -117,26 +130,45 @@ function onSearchAddress(ev) {
     });
 }
 
-function onAddLoc(geo) {
-  const locName = prompt('Loc name', geo.address || 'Just a place');
-  if (!locName) return;
+function openLocModal(locName = 'Just a place', locRating = '3') {
+  return Swal.fire({
+    title: '',
+    html: `
+        <input id="locName" class="swal2-input" value="${locName}">
+        <input id="locRating" class="swal2-input" value="${locRating}">
+      `,
+    focusConfirm: false,
+    confirmButtonText: 'Save',
+    preConfirm: () => {
+      return [
+        document.getElementById('locName').value,
+        document.getElementById('locRating').value,
+      ];
+    },
+  });
+}
 
-  const loc = {
-    name: locName,
-    rate: +prompt(`Rate (1-5)`, '3'),
-    geo,
-  };
-  locService
-    .save(loc)
-    .then((savedLoc) => {
-      flashMsg(`Added Location (id: ${savedLoc.id})`);
-      utilService.updateQueryParams({ locId: savedLoc.id });
-      loadAndRenderLocs();
-    })
-    .catch((err) => {
-      console.error('OOPs:', err);
-      flashMsg('Cannot add location');
-    });
+function onAddLoc(geo) {
+  openLocModal(geo.address || 'Just a place', '3').then(({ value }) => {
+    const locName = value[0];
+    const loc = {
+      name: locName,
+      rate: value[1],
+      geo,
+    };
+    locService
+      .save(loc)
+      .then((savedLoc) => {
+        console.log(savedLoc);
+        flashMsg(`Added Location (id: ${savedLoc.id})`);
+        utilService.updateQueryParams({ locId: savedLoc.id });
+        loadAndRenderLocs();
+      })
+      .catch((err) => {
+        console.error('OOPs:', err);
+        flashMsg('Cannot add location');
+      });
+  });
 }
 
 function loadAndRenderLocs() {
@@ -156,6 +188,7 @@ function onPanToUserPos() {
       mapService.panTo({ ...latLng, zoom: 15 });
       unDisplayLoc();
       loadAndRenderLocs();
+      gUserPos = latLng;
       flashMsg(`You are at Latitude: ${latLng.lat} Longitude: ${latLng.lng}`);
     })
     .catch((err) => {
@@ -166,9 +199,15 @@ function onPanToUserPos() {
 
 function onUpdateLoc(locId) {
   locService.getById(locId).then((loc) => {
-    const rate = prompt('New rate?', loc.rate);
-    if (rate && rate !== loc.rate) {
-      loc.rate = rate;
+    openLocModal(loc.name, loc.rate).then(({ value }) => {
+      if (value[1] && value[1] !== loc.rate) {
+        loc.rate = value[1];
+      }
+
+      if (value[0] && value[0] !== loc.name) {
+        loc.name = value[0];
+      }
+
       locService
         .save(loc)
         .then((savedLoc) => {
@@ -179,7 +218,7 @@ function onUpdateLoc(locId) {
           console.error('OOPs:', err);
           flashMsg('Cannot update location');
         });
-    }
+    });
   });
 }
 
@@ -200,12 +239,21 @@ function displayLoc(loc) {
   mapService.panTo(loc.geo);
   mapService.setMarker(loc);
 
+  let distanceFromUser;
+
   const el = document.querySelector('.selected-loc');
   el.querySelector('.loc-name').innerText = loc.name;
   el.querySelector('.loc-address').innerText = loc.geo.address;
   el.querySelector('.loc-rate').innerHTML = '★'.repeat(loc.rate);
   el.querySelector('[name=loc-copier]').value = window.location;
   el.classList.add('show');
+
+  if (gUserPos) {
+    distanceFromUser = utilService.getDistance(gUserPos, loc.geo);
+    el.querySelector(
+      '.loc-distance'
+    ).innerText = `Distance: ${distanceFromUser} KM.`;
+  }
 
   utilService.updateQueryParams({ locId: loc.id });
 }
@@ -288,6 +336,9 @@ function onSetFilterBy({ txt, minRate }) {
 function renderLocStats() {
   locService.getLocCountByRateMap().then((stats) => {
     handleStats(stats, 'loc-stats-rate');
+  });
+  locService.getLocCountByUpdateMap().then((stats) => {
+    handleStats(stats, 'loc-stats-updates');
   });
 }
 

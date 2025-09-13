@@ -31,13 +31,19 @@ export const locService = {
   setFilterBy,
   setSortBy,
   getLocCountByRateMap,
+  getLocCountByUpdateMap,
 };
 
 function query() {
   return storageService.query(DB_KEY).then((locs) => {
     if (gFilterBy.txt) {
       const regex = new RegExp(gFilterBy.txt, 'i');
-      locs = locs.filter((loc) => regex.test(loc.name));
+      for (const loc of locs) {
+        console.log({ loc });
+      }
+      locs = locs.filter(
+        (loc) => regex.test(loc.name) || regex.test(loc.geo.address)
+      );
     }
     if (gFilterBy.minRate) {
       locs = locs.filter((loc) => loc.rate >= gFilterBy.minRate);
@@ -101,6 +107,36 @@ function getLocCountByRateMap() {
     );
     locCountByRateMap.total = locs.length;
     return locCountByRateMap;
+  });
+}
+
+function getLocCountByUpdateMap() {
+  return storageService.query(DB_KEY).then((locs) => {
+    const locCountByUpdateMap = locs.reduce(
+      (map, loc) => {
+        const now = new Date();
+
+        if (!loc.updatedAt) {
+          map.Never++;
+          return map;
+        }
+
+        const updated = new Date(loc.updatedAt);
+
+        if (
+          now.getDay() === updated.getDay() &&
+          now.getMonth() === updated.getMonth() &&
+          now.getYear() === updated.getYear()
+        )
+          map.Today++;
+        else map.Past++;
+
+        return map;
+      },
+      { Today: 0, Past: 0, Never: 0 }
+    );
+    locCountByUpdateMap.total = locs.length;
+    return locCountByUpdateMap;
   });
 }
 
